@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>rf</title>
+    <script src="//aframe.io/releases/0.9.2/aframe.min.js"></script>
+
+    <script src="./js/q-controls.js"></script>
+    <script src="./js/r-scene.js"></script>
+    <script src="./js/r-object.js"></script>
+    <script src="./js/r-ground.js"></script>
+    <script src="./js/r-sphere.js"></script>
+    <script src="./js/r-torusboxoctahedron.js"></script>
+    <script src="./js/r-firmament.js"></script>
+</head>
+
+<body>
+<a-scene stats>
+    <a-entity id="player" q-controls camera></a-entity>
+
+    <a-entity r-scene>
+        <a-entity r-ground></a-entity>
+        <a-entity r-sphere></a-entity>
+        <a-entity r-torusboxoctahedron></a-entity>
+        <a-entity r-firmament></a-entity>
+    </a-entity>
+
+</a-scene>
+</body>
+</html>
