@@ -18,8 +18,7 @@ AFRAME.registerComponent('q-controls', {
         this.adAxis = "x";
         this.wsAxis = "z";
         this.jAxis = "y";
-        this.upDirection = new THREE.Vector3(0, -1, 0);
-        this.fly = true;
+        this.fly = false;
         this.maxDeltaTime = .004;
         this.clampVelocity = .001;
 
@@ -85,19 +84,18 @@ AFRAME.registerComponent('q-controls', {
             // Midair
             this.isWalking = false;
             return;
+        }
+        if (this.el.object3D.position[this.jAxis] <= this.data.playerHeight) {
+            // Underground
+            this.velocity[this.jAxis] = 0;
+            this.el.object3D.position[this.jAxis] = this.data.playerHeight;
+        }
+        if (this.pressedKeys.Space) {
+            // Init jump
+            this.velocity[this.jAxis] = this.data.jumpAcceleration;
+            this.isWalking = false;
         } else {
-            if (this.el.object3D.position[this.jAxis] <= this.data.playerHeight) {
-                // Underground
-                this.velocity[this.jAxis] = 0;
-                this.el.object3D.position[this.jAxis] = this.data.playerHeight;
-            }
-            if (this.pressedKeys.Space) {
-                // Init jump
-                this.velocity[this.jAxis] = this.data.jumpAcceleration;
-                this.isWalking = false;
-            } else {
-                this.isWalking = true;
-            }
+            this.isWalking = true;
         }
     },
     imprison: function(position) {
