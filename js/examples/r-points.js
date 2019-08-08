@@ -5,16 +5,16 @@ AFRAME.registerComponent("r-points", {
         period: {type: "vec3", default: new THREE.Vector3(.2, .2, .2)},
     },
     update: function() {
-        const addot = (str) => {
-            if(!("" + str).includes(".")) {
-                str += ".";
+        const addot = (num) => {
+            num = "" + num;
+            if (!num.includes(".")) {
+                num += ".";
             }
-            return str;
+            return num;
         };
         const pointSize = addot(this.data.pointSize);
         const period = `vec3(${addot(this.data.period.x)}, ${addot(this.data.period.y)}, ${addot(this.data.period.z)})`;
-        const boxSize = `vec3(${addot(this.data.size.x)}, ${addot(this.data.size.y)}, ${addot(this.data.size.z)})`;
-
+        const boxSize = `vec3(${this.data.size.toArray().map(addot).join(",")})`;
         this.el.setAttribute("r-thing", {
             distance: `
                 float pointSize = ${pointSize};
@@ -24,7 +24,7 @@ AFRAME.registerComponent("r-points", {
 
                 vec3 boxSize = ${boxSize};
                 float boxDistance = length(max(abs(p) - boxSize, 0.));
-                return opIntersection(boxDistance, pointsDistance);
+                return max(boxDistance, pointsDistance);
             `,
         });
     },

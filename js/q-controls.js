@@ -12,7 +12,6 @@ AFRAME.registerComponent('q-controls', {
         gravityConstant: {default: .02},
         yaw: {default: 0.001},
         pitch: {default: 0.001},
-        gui: {default: false},
     },
     init: function() {
         this.adAxis = "x";
@@ -20,7 +19,7 @@ AFRAME.registerComponent('q-controls', {
         this.jAxis = "y";
         this.fly = false;
         this.maxDeltaTime = .004;
-        this.clampVelocity = .001;
+        this.clampVelocity = .00005;
 
         this.pressedKeys = {};
         this.wishWalkDir = new THREE.Vector3();
@@ -49,9 +48,6 @@ AFRAME.registerComponent('q-controls', {
         this.attachRotationEventListeners();
 
         this.checkGround();
-        if (this.data.gui) {
-            this.el.setAttribute("q-controls-ui", {});
-        }
         this.initCollidableMeshList();
     },
     collidableMeshList: [],
@@ -67,6 +63,7 @@ AFRAME.registerComponent('q-controls', {
             return;
         }
         this.updateVelocity(delta * .0001);
+        this.el.object3D.position.add(this.velocity);
         if (this.speedEl) {
             const hSpeed = this.velocity.lengthSq().toFixed(3);
             this.speedEl.setAttribute("text", {value: hSpeed});
@@ -155,8 +152,6 @@ AFRAME.registerComponent('q-controls', {
         if (!this.isWalking) {
             this.velocity.add(this.data.gravity);
         }
-
-        this.el.object3D.position.add(this.velocity);
     },
     // https://flafla2.github.io/2015/02/14/bunnyhop.html
     moveGround: function(accelDir, prevVelocity, delta) {
