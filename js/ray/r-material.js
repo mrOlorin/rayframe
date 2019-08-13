@@ -6,6 +6,7 @@ AFRAME.registerComponent("r-material", {
         ambient: {default: .2},
         shininess: {default: 0.},
         reflection: {default: 0.},
+        refraction: {default: 0.},
         custom: {type: "string"},
     },
     update: function() {
@@ -25,6 +26,7 @@ AFRAME.registerComponent("r-material", {
             const ambient = dot(this.data.ambient);
             const shininess = dot(1 - this.data.shininess);
             const reflection = dot(this.data.reflection);
+            const refraction = dot(this.data.refraction);
             material = `
                 Material m;
                 m.color = ${color};
@@ -33,6 +35,7 @@ AFRAME.registerComponent("r-material", {
                 m.ambient = ${ambient};
                 m.shininess = ${shininess};
                 m.reflection = ${reflection};
+                m.refraction = ${refraction};
                 return m;
             `;
         }

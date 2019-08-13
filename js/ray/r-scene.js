@@ -13,19 +13,13 @@ AFRAME.registerComponent("r-scene", {
     init: function() {
         const fail = (![] + [])[+[]] + (![] + [])[+!+[]] + ([![]] + [][[]])[+!+[] + [+[]]] + (![] + [])[!+[] + !+[]];
         const material = this.initMaterial();
-        const geometry = this.initGeometry();
+        const geometry = new THREE.BoxBufferGeometry(this.data.size.x, this.data.size.y, this.data.size.z);
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.onBeforeRender = this.onBeforeRender.bind(this);
         this.el.setObject3D("mesh", this.mesh);
         window.addEventListener("resize", () => {
             this.mesh.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
         });
-    },
-    initGeometry: function() {
-        const geometry = new THREE.BoxBufferGeometry(this.data.size.x, this.data.size.y, this.data.size.z);
-        this.things = new Float32Array(1e6);
-        geometry.addAttribute('things', new THREE.BufferAttribute(this.things, 3));
-        return geometry;
     },
     initMaterial: function() {
         return new THREE.ShaderMaterial({
@@ -34,12 +28,12 @@ AFRAME.registerComponent("r-scene", {
 				uniform float time;
                 uniform vec3 rayOrigin;
                 uniform vec3 rayDirection;
-                varying mat3 cam;
+                varying mat3 camera;
                 void main() {
                     vec3 forward = normalize(rayDirection);
                     vec3 right = normalize(cross(vec3(0., 1., 0.), forward));
                     vec3 up = normalize(cross(forward, right));
-                    cam = mat3(right, up, forward);
+                    camera = mat3(right, up, forward);
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(vec3(position), 1.0);
                 }
             `,
@@ -72,12 +66,14 @@ AFRAME.registerComponent("r-scene", {
             const prefix = `thing${i++}_`;
 
             declarations.push(`
-                float ${prefix}distance(vec3 p) {
+                vec3 ${prefix}modify(vec3 p) {
                     ${obj.data.modifiers}
+                    return p;
+                }
+                float ${prefix}distance(vec3 p) {
                     ${obj.data.distance}
                 }
                 Material ${prefix}material(vec3 p) {
-                    ${obj.data.modifiers}
                     ${obj.data.material}
                 }
                 float ${prefix}blend(float d1, float d2) {
@@ -88,19 +84,21 @@ AFRAME.registerComponent("r-scene", {
                 }
             `);
 
-            distanceCalls.push(`d = ${prefix}blend(d, ${prefix}distance(p));`);
-
-            materialCalls.push(`float ${prefix}d = ${prefix}distance(p);`);
-            materialCalls.push(`m = ${prefix}blend(d, ${prefix}d, m, ${prefix}material(p));`);
-            materialCalls.push(`d = ${prefix}blend(d, ${prefix}d);`);
+            distanceCalls.push(`d = ${prefix}blend(d, ${prefix}distance(${prefix}modify(p)));`);
+            // Буэ
+            materialCalls.push(`tmpP = ${prefix}modify(p);`,
+                               `tmpD = ${prefix}distance(tmpP);`,
+                               `m = ${prefix}blend(d, tmpD, m, ${prefix}material(tmpP));`,
+                               `d = ${prefix}blend(d, tmpD);`,
+                               `if(d <= PLANK_LENGTH) return m;`);
         }
 
         return `
-            // http://iquilezles.org/www/articles/distfunctions/distfunctions.htm
             #define MAX_STEPS ${this.data.maxSteps}
             #define MAX_DIST float(${this.data.maxDist})
-            #define PLANK_LENGTH ${this.data.plankLength}
+            #define PLANK_LENGTH float(${this.data.plankLength})
             #define FOG float(${this.data.fog})
+            #define SCREEN_DIST float(${this.data.screenDistance})
 
             precision highp float;
 
@@ -109,7 +107,7 @@ AFRAME.registerComponent("r-scene", {
             uniform vec3 rayOrigin;
             uniform vec3 rayDirection;
 
-            varying mat3 cam;
+            varying mat3 camera;
 
             const vec3 gammaCorrection = vec3(1.0 / 2.2);
 
@@ -120,6 +118,7 @@ AFRAME.registerComponent("r-scene", {
                 float ambient;
                 float shininess;
                 float reflection;
+                float refraction;
             };
 
             struct HitObject {
@@ -127,11 +126,46 @@ AFRAME.registerComponent("r-scene", {
                 Material material;
             };
 
+            float Cellular2D( vec2 P )
+            {
+                //  https://github.com/BrianSharpe/Wombat/blob/master/Cellular2D.glsl
+
+                //  establish our grid cell and unit position
+                vec2 Pi = floor(P);
+                vec2 Pf = P - Pi;
+
+                //  calculate the hash
+                vec4 Pt = vec4( Pi.xy, Pi.xy + 1.0 );
+                Pt = Pt - floor(Pt * ( 1.0 / 71.0 )) * 71.0;
+                Pt += vec2( 26.0, 161.0 ).xyxy;
+                Pt *= Pt;
+                Pt = Pt.xzxz * Pt.yyww;
+                vec4 hash_x = fract( Pt * ( 1.0 / 951.135664 ) );
+                vec4 hash_y = fract( Pt * ( 1.0 / 642.949883 ) );
+
+                //  generate the 4 points
+                hash_x = hash_x * 2.0 - 1.0;
+                hash_y = hash_y * 2.0 - 1.0;
+                const float JITTER_WINDOW = 0.25;   // 0.25 will guarentee no artifacts
+                hash_x = ( ( hash_x * hash_x * hash_x ) - sign( hash_x ) ) * JITTER_WINDOW + vec4( 0.0, 1.0, 0.0, 1.0 );
+                hash_y = ( ( hash_y * hash_y * hash_y ) - sign( hash_y ) ) * JITTER_WINDOW + vec4( 0.0, 0.0, 1.0, 1.0 );
+
+                //  return the closest squared distance
+                vec4 dx = Pf.xxxx - hash_x;
+                vec4 dy = Pf.yyyy - hash_y;
+                vec4 d = dx * dx + dy * dy;
+                d.xy = min(d.xy, d.zw);
+                return min(d.x, d.y) * ( 1.0 / 1.125 ); // return a value scaled to 0.0->1.0
+            }
+
+            // Declarations
             ${declarations.join(`
             `)}
 
+            // http://iquilezles.org/www/articles/distfunctions/distfunctions.htm
             float getDistance(vec3 p) {
                 float d = MAX_DIST;
+                // DistanceCalls
                 ${distanceCalls.join(`
                 `)}
                 return d;
@@ -139,31 +173,28 @@ AFRAME.registerComponent("r-scene", {
 
             Material getMaterial(vec3 p) {
                 float d = MAX_DIST;
+                vec3 tmpP;
+                float tmpD;
                 Material m;
+                // MaterialCalls
                 ${materialCalls.join(`
                 `)}
                 return m;
             }
 
             HitObject rayMarch(vec3 rayOrigin, vec3 rayDirection) {
-                HitObject obj;
-                HitObject hitObject;
+                HitObject result;
+                result.distance = PLANK_LENGTH;
                 float d;
-                vec3 p;
                 for (int i = 0; i < MAX_STEPS; i++) {
-                    p = rayOrigin + rayDirection * hitObject.distance;
-                    d = getDistance(p);
-                    hitObject.distance += d;;
-                    if (hitObject.distance > MAX_DIST) {
-                        break;
-                    }
-                    if(d < PLANK_LENGTH) {
+                    d = getDistance(rayOrigin + rayDirection * result.distance);
+                    result.distance += d;;
+                    if (result.distance > MAX_DIST || d < PLANK_LENGTH) {
                         break;
                     }
                 }
-
-                hitObject.material = getMaterial(rayOrigin + rayDirection * hitObject.distance);
-                return hitObject;
+                result.material = getMaterial(rayOrigin + rayDirection * result.distance);
+                return result;
             }
 
             vec3 getNormal(vec3 point) {
@@ -177,24 +208,16 @@ AFRAME.registerComponent("r-scene", {
                 return normalize(normal);
             }
 
-            float specularLight(vec3 normal, vec3 lightDir) {
-                vec3 h = normalize(normal + lightDir);
-                return pow(max(dot(h, normal), 0.0), 8.0);
-            }
-
             // https://www.youtube.com/watch?v=TnhM0xc_zFc
             vec3 blend(vec3 color, vec3 blendColor, float blendAmount) {
                 return color * (1. - blendAmount) + blendColor * blendAmount;
-            }
-            vec3 reflectRay(vec3 direction, vec3 normal) {
-                return 2. * dot(-direction, normal) * normal + direction;
             }
             float softShadow(vec3 point, vec3 lightDir) {
                 point += lightDir * .1;
                 float totalDist = .1;
                 float result = 1.;
                 float d;
-                for ( int i = 0; i < 64; i ++ ) {
+                for ( int i = 0; i < 32; i ++ ) {
                     d = getDistance(point);
                     if (d <= PLANK_LENGTH) return 0.;
                     result = min(result, d / (totalDist * .001));
@@ -207,25 +230,26 @@ AFRAME.registerComponent("r-scene", {
 
             // https://www.shadertoy.com/view/wd2SWD
             float calcAO(vec3 p, vec3 n) {
-              float k = 1.;
-              float occ = 0.;
-              float len;
-              int j = 0;
-              for ( int i = 0; i < 5; i ++ ) {
-                len = .15 * (float(j++) + 1.);
-                occ += (len - getDistance(n * len + p)) * k;
-                k *= .5;
-              }
-              return clamp(1. - occ, 0., 1.);
+                float k = 1.;
+                float occ = 0.;
+                float len;
+                int j = 0;
+                for ( int i = 0; i < 5; i ++ ) {
+                    len = .15 * (float(j++) + 1.);
+                    occ += (len - getDistance(n * len + p)) * k;
+                    k *= .5;
+                }
+                return clamp(1. - occ, 0., 1.);
             }
 
             vec3 phongLighting(vec3 point, Material mat, vec3 ray) {
-                vec3 normal = getNormal(point);
                 float t = time * .0001;
-                vec3 lightPos = vec3(sin(t), 3.+sin(t*.5), cos(t*1.5));
+                vec3 lightPos = vec3(sin(t), 2. + sin(t * .5), cos(t * 1.5));
+
+                vec3 normal = getNormal(point);
                 vec3 lightDir = normalize(lightPos - point);
                 float diffuse = max(0., mat.diffuse * dot(normal, lightDir));
-                vec3 reflectedRay = reflectRay(ray, normal);
+                vec3 reflectedRay = reflect(ray, normal);
                 float specular = max(0., mat.specular * dot(lightDir, reflectedRay));
                 specular = pow(specular, mat.shininess);
                 float shadow = softShadow(point, lightDir);
@@ -234,57 +258,72 @@ AFRAME.registerComponent("r-scene", {
                 return (mat.ambient + diffuse * shadow) * pow(mat.color, gammaCorrection) + specular * shadow * vec3(1.);
             }
 
-            vec3 reflections(vec3 color, vec3 point, Material mat, vec3 ray) {
-                float reflectionAmount = mat.reflection;
-                vec3 normal;
+            vec3 reflections(vec3 point, vec3 ray, vec3 color, float reflectionAmount) {
                 HitObject obj;
-                vec3 reflectionColor;
                 for ( int i = 0; i < 5; i ++ ) {
                     if (reflectionAmount <= 0.01) return color;
-                    normal = getNormal(point);
-                    ray = reflectRay(ray, normal);
+                    ray = reflect(ray, getNormal(point));
                     point += .1 * ray;
                     obj = rayMarch(point, ray);
-                    if (obj.distance > MAX_DIST) return blend(color, vec3(0.), reflectionAmount);
+                    if (obj.distance > MAX_DIST) return blend(color, vec3(0), reflectionAmount);
                     point = point + ray * obj.distance;
-                    reflectionColor = phongLighting(point, obj.material, ray);
-                    color = blend(color, reflectionColor, reflectionAmount);
+                    color = blend(color, phongLighting(point, obj.material, ray), reflectionAmount);
                     reflectionAmount *= obj.material.reflection;
                 }
                 return color;
             }
 
+            vec3 refractions(vec3 point, vec3 ray, Material material) {
+                ray = refract(ray, getNormal(point), material.refraction);
+                float d = .01;
+                float totalD;
+                for ( int i = 0; i < 32; i ++ ) {
+                    point += ray * d;
+                    d = abs(getDistance(point));
+                    if (d <= PLANK_LENGTH) {
+                        break;
+                    }
+                    totalD += d;
+                }
+                point += ray * .01;
+                ray =  -1. * refract(ray, getNormal(point), material.refraction);
+                HitObject obj = rayMarch(point, ray);
+                if (obj.distance < 0.) {
+                    return vec3(0);
+                }
+                return blend(phongLighting(point + ray * obj.distance, obj.material, ray), material.color, totalD * .1);
+            }
+
             vec3 getColor(vec3 ray) {
                 HitObject hitObject = rayMarch(rayOrigin, ray);
-                vec3 fogColor = vec3(1.);
+                vec3 airColor = vec3(.0,.0,.03);
                 if (hitObject.distance >= MAX_DIST || hitObject.distance >= FOG) {
-                    return fogColor;
+                    return airColor;
                 }
-
                 vec3 point = rayOrigin + ray * hitObject.distance;
-
-                vec3 color = phongLighting(point, hitObject.material, ray);
-                color = reflections(color, point, hitObject.material, ray);
-
-                // Fog
-                color = blend(color, fogColor, hitObject.distance / FOG);
-
+                vec3 color;
+                color = phongLighting(point, hitObject.material, ray);
+                color = reflections(point, ray, color, hitObject.material.reflection);
+                if (hitObject.material.refraction > 0.) {
+                    color = blend(color, refractions(point, ray, hitObject.material), .8);
+                }
+                color = blend(color, airColor, hitObject.distance / FOG);
                 return color;
             }
 
             void main() {
                 vec2 uv = (gl_FragCoord.xy - .5 * resolution.xy) / resolution.y;
-                vec3 screenPosition = vec3(uv, float(${this.data.screenDistance}));
-                vec3 ray = cam * normalize(screenPosition);
+                vec3 screenPosition = vec3(uv, SCREEN_DIST);
+                vec3 ray = camera * normalize(screenPosition);
                 gl_FragColor = vec4(getColor(ray), 1.);
             }
         `;
     },
 });
 AFRAME.registerComponent("r-thing", {
-    // https://www.youtube.com/watch?v=s8nFqwOho-s
     schema: {
         modifiers: {},
+        modifier: {},
         distance: {},
         material: {
             default: `
@@ -311,12 +350,6 @@ AFRAME.registerComponent("r-thing", {
                     return m2;
                 }
             `,
-        },
-        preDistance: {
-            default: ``,
-        },
-        postDistance: {
-            default: ``,
         },
     },
     addModifier: function(modifier) {

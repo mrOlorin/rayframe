@@ -24,6 +24,11 @@ AFRAME.registerComponent("r-op-smooth-union", {
                 m.ambient = mix(m2.ambient, m1.ambient, h);
                 m.shininess = mix(m2.shininess, m1.shininess, h);
                 m.reflection = mix(m2.reflection, m1.reflection, h);
+                if(d1 <= d2) {
+                    m.refraction = m1.refraction;
+                } else {
+                    m.refraction = m2.refraction;
+                }
                 return m;
             `,
         });

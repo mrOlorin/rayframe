@@ -12,14 +12,14 @@ AFRAME.registerComponent("r-material-grid", {
                     m.specular = .2;
                     m.ambient = .3;
                     m.shininess = 1.;
-                    m.reflection = .2;
+                    m.reflection = 0.;
                 } else {
                     m.color = vec3(.322, .341, .365);
                     m.diffuse = .2;
                     m.specular = .2;
                     m.ambient = .6;
                     m.shininess = 1.;
-                    m.reflection = .2;
+                    m.reflection = 0.;
                 }
                 return m;
             `,

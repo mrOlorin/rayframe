@@ -1,4 +1,4 @@
-AFRAME.registerComponent("r-ground", {
+AFRAME.registerComponent("r-floor", {
     update: function() {
         this.el.setAttribute("r-thing", {
             distance: `
