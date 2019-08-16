@@ -2,13 +2,12 @@ AFRAME.registerComponent("r-points-field", {
     update: function() {
         this.el.setAttribute("r-thing", {
             distance: `
-                vec3 camera = rayOrigin - p;
-                float cameraDistanceSq = p.x * p.x + p.y * p.y + p.z * p.z;
-                float pointSize = .01 / (8. + cameraDistanceSq);
+                float distanceSq = p.x * p.x + p.y * p.y + p.z * p.z;
+                float pointSize = .01 / (6. + distanceSq);
                 if(pointSize <= .001) {
                     return MAX_DIST;
                 }
-                vec3 pointsPeriod = vec3(.03);
+                vec3 pointsPeriod = vec3(.06);
                 vec3 pos = vec3(
                     ceil(p.x / pointsPeriod.x),
                     ceil(p.y / pointsPeriod.y),

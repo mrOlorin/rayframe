@@ -11,7 +11,8 @@ AFRAME.registerComponent("r-box", {
             }
             return num;
         };
-        const boxSize = `vec3(${this.data.size.toArray().map(addot).join(",")})`;
+        const xyz = [this.data.size.x, this.data.size.y, this.data.size.z];
+        const boxSize = `vec3(${xyz.map(addot).join(",")})`;
         const r = addot(this.data.roundness);
         this.el.setAttribute("r-thing", {
             distance: `

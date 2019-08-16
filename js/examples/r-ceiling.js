@@ -4,7 +4,7 @@ AFRAME.registerComponent("r-ceiling", {
             distance: `
                 float t = time * .0001;
                 float random = Cellular2D(vec2(p.x, p.z)*.2 + t);
-                return 11. - p.y + random;
+                return (11. - p.y + random)*.5;
             `,
             material: `
                 float f = .5 + .5 * sin(p.y + .5);

@@ -2,8 +2,8 @@ AFRAME.registerComponent("r-scene", {
     schema: {
         size: {type: "vec3", default: new THREE.Vector3(1e4, 1e4, 1e4)},
         maxSteps: {default: 256},
-        maxDist: {default: 100.},
-        fog: {default: 100.},
+        fogDistance: {default: 100.},
+        fogColor: {type: "vec3", default: new THREE.Vector3(.8, .8, .8)},
         plankLength: {default: .0001},
         screenDistance: {default: .6},
     },
@@ -95,9 +95,10 @@ AFRAME.registerComponent("r-scene", {
 
         return `
             #define MAX_STEPS ${this.data.maxSteps}
-            #define MAX_DIST float(${this.data.maxDist})
             #define PLANK_LENGTH float(${this.data.plankLength})
-            #define FOG float(${this.data.fog})
+            #define FOG_DIST float(${this.data.fogDistance})
+            #define MAX_DIST FOG_DIST
+            #define FOG_COLOR vec3(${this.data.fogColor.x}, ${this.data.fogColor.y}, ${this.data.fogColor.z})
             #define SCREEN_DIST float(${this.data.screenDistance})
 
             precision highp float;
@@ -118,10 +119,12 @@ AFRAME.registerComponent("r-scene", {
                 float ambient;
                 float shininess;
                 float reflection;
-                float refraction;
+                float transparency;
+                float ior;
             };
 
             struct HitObject {
+                vec3 point;
                 float distance;
                 Material material;
             };
@@ -164,7 +167,7 @@ AFRAME.registerComponent("r-scene", {
 
             // http://iquilezles.org/www/articles/distfunctions/distfunctions.htm
             float getDistance(vec3 p) {
-                float d = MAX_DIST;
+                float d = FOG_DIST;
                 // DistanceCalls
                 ${distanceCalls.join(`
                 `)}
@@ -172,7 +175,7 @@ AFRAME.registerComponent("r-scene", {
             }
 
             Material getMaterial(vec3 p) {
-                float d = MAX_DIST;
+                float d = FOG_DIST;
                 vec3 tmpP;
                 float tmpD;
                 Material m;
@@ -185,21 +188,26 @@ AFRAME.registerComponent("r-scene", {
             HitObject rayMarch(vec3 rayOrigin, vec3 rayDirection) {
                 HitObject result;
                 result.distance = PLANK_LENGTH;
-                float d;
+                float stepDistance;
                 for (int i = 0; i < MAX_STEPS; i++) {
-                    d = getDistance(rayOrigin + rayDirection * result.distance);
-                    result.distance += d;;
-                    if (result.distance > MAX_DIST || d < PLANK_LENGTH) {
+                    result.point = rayOrigin + rayDirection * result.distance;
+                    stepDistance = abs(getDistance(result.point));
+                    result.distance += stepDistance;
+                    if (stepDistance < PLANK_LENGTH) {
+                        result.point = rayOrigin + rayDirection * result.distance;
+                        break;
+                    }
+                    if (result.distance >= FOG_DIST) {
                         break;
                     }
                 }
-                result.material = getMaterial(rayOrigin + rayDirection * result.distance);
+                result.material = getMaterial(result.point);
                 return result;
             }
 
             vec3 getNormal(vec3 point) {
                 float distance = getDistance(point);
-                vec2 offset = vec2(.1, 0);
+                vec2 offset = vec2(.01, 0);
                 vec3 normal = distance - vec3(
                     getDistance(point - offset.xyy),
                     getDistance(point - offset.yxy),
@@ -265,8 +273,8 @@ AFRAME.registerComponent("r-scene", {
                     ray = reflect(ray, getNormal(point));
                     point += .1 * ray;
                     obj = rayMarch(point, ray);
-                    if (obj.distance > MAX_DIST) return blend(color, vec3(0), reflectionAmount);
-                    point = point + ray * obj.distance;
+                    if (obj.distance > FOG_DIST) return blend(color, vec3(0), reflectionAmount);
+                    point += ray * obj.distance;
                     color = blend(color, phongLighting(point, obj.material, ray), reflectionAmount);
                     reflectionAmount *= obj.material.reflection;
                 }
@@ -274,48 +282,35 @@ AFRAME.registerComponent("r-scene", {
             }
 
             vec3 refractions(vec3 point, vec3 ray, Material material) {
-                ray = refract(ray, getNormal(point), material.refraction);
-                float d = .01;
-                float totalD;
-                for ( int i = 0; i < 32; i ++ ) {
-                    point += ray * d;
-                    d = abs(getDistance(point));
-                    if (d <= PLANK_LENGTH) {
-                        break;
-                    }
-                    totalD += d;
-                }
-                point += ray * .01;
-                ray =  -1. * refract(ray, getNormal(point), material.refraction);
-                HitObject obj = rayMarch(point, ray);
-                if (obj.distance < 0.) {
-                    return vec3(0);
-                }
-                return blend(phongLighting(point + ray * obj.distance, obj.material, ray), material.color, totalD * .1);
+                vec3 normal = getNormal(point);
+                ray = refract(ray, normal, 1. / material.ior);
+                HitObject backSurface = rayMarch(point - normal * PLANK_LENGTH * 2., ray);
+
+                normal = -getNormal(backSurface.point);
+                ray = refract(ray, normal, 1. / material.ior);
+                HitObject nextSurface = rayMarch(backSurface.point - normal * PLANK_LENGTH * 2., ray);
+
+                return blend(phongLighting(nextSurface.point, nextSurface.material, ray), FOG_COLOR, nextSurface.distance / FOG_DIST);
             }
 
-            vec3 getColor(vec3 ray) {
-                HitObject hitObject = rayMarch(rayOrigin, ray);
-                vec3 airColor = vec3(.0,.0,.03);
-                if (hitObject.distance >= MAX_DIST || hitObject.distance >= FOG) {
-                    return airColor;
+            vec3 getColor(vec3 origin, vec3 direction) {
+                HitObject hitObject = rayMarch(origin, direction);
+                if (hitObject.distance >= FOG_DIST) {
+                    return FOG_COLOR;
                 }
-                vec3 point = rayOrigin + ray * hitObject.distance;
                 vec3 color;
-                color = phongLighting(point, hitObject.material, ray);
-                color = reflections(point, ray, color, hitObject.material.reflection);
-                if (hitObject.material.refraction > 0.) {
-                    color = blend(color, refractions(point, ray, hitObject.material), .8);
+                color = phongLighting(hitObject.point, hitObject.material, direction);
+                if (hitObject.material.transparency > 0.) {
+                    color = blend(color, refractions(hitObject.point, direction, hitObject.material), hitObject.material.transparency);
                 }
-                color = blend(color, airColor, hitObject.distance / FOG);
+                color = reflections(hitObject.point, direction, color, hitObject.material.reflection);
+                color = blend(color, FOG_COLOR, hitObject.distance / FOG_DIST);
                 return color;
             }
 
             void main() {
                 vec2 uv = (gl_FragCoord.xy - .5 * resolution.xy) / resolution.y;
-                vec3 screenPosition = vec3(uv, SCREEN_DIST);
-                vec3 ray = camera * normalize(screenPosition);
-                gl_FragColor = vec4(getColor(ray), 1.);
+                gl_FragColor = vec4(getColor(rayOrigin, normalize(camera * vec3(uv, SCREEN_DIST))), 1.);
             }
         `;
     },

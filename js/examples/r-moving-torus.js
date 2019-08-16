@@ -1,3 +1,4 @@
+// Not moving lol
 AFRAME.registerComponent("r-moving-torus", {
     schema: {
         r: {default: 1},

@@ -37,11 +37,10 @@
                   r-material="color: .435, .486, .384;
                               diffuse: .3;"></a-entity>-->
         <a-entity r-floor r-material-grid></a-entity>
-
-        <a-entity r-sphere="radius: 1;"
+        <a-entity r-sphere="radius: .5;"
                   r-material="color: .027 .318 .596;"
-                  r-op-smooth-union="k: .2"
-                  position="4, 1.5, -14"></a-entity>
+                  r-op-smooth-union="k: .1"
+                  position="3, .8, -7"></a-entity>
 
         <a-entity r-points
                   r-material="color: .918, .263, 0; diffuse: 0.;"
@@ -52,7 +51,7 @@
                   r-material="color: .722, .396, .267;"
                   r-op-smooth-union="k: .2"></a-entity>
         <a-entity r-points-field
-                  r-material="color: .722, .396, .267;"
+                  r-material="color: .9, .9, .7;diffuse: 0.;specular: .01;ambient: .8;"
                   position="10, 1, 5"></a-entity>
         <a-entity r-column
                   position="13, 0, 0"
@@ -61,13 +60,10 @@
                               diffuse: .2;
                               specular: .1"
                   r-op-repeat="period: 14 0 14"></a-entity>
-        <a-entity r-box size=".5, .5, .5"
-                  position="0, 1.55, 13.5"
-                  r-material="color: 1., 0., 0.; refraction: .5;"
+        <a-entity r-box="size: .01, 1., 1.;"
+                  position="0, 1.2, 13.5"
+                  r-material="color: .8, 1, .8.;diffuse: .2; specular: .5; transparency: .8; ior: 1.4;"></a-entity>
 
-                  r-op-rotation="axis:yz"
-                  r-op-smooth-union="k: .4"></a-entity>
-        <a-entity r-moving-torus></a-entity>
         <a-entity r-ceiling r-op-smooth-union="k: 3."></a-entity>
     </a-entity>
 </a-scene>
