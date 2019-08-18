@@ -22,12 +22,14 @@ AFRAME.registerComponent("r-scene", {
         });
     },
     initMaterial: function() {
+        const fragmentShader = this.buildFragmentShader();
         return new THREE.ShaderMaterial({
             vertexShader: `
 				precision highp float;
 				uniform float time;
                 uniform vec3 rayOrigin;
                 uniform vec3 rayDirection;
+                uniform vec3 positions[${this.positions.length}];
                 varying mat3 camera;
                 varying vec3 lightPos;
 
@@ -41,12 +43,13 @@ AFRAME.registerComponent("r-scene", {
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(vec3(position), 1.0);
                 }
             `,
-            fragmentShader: this.buildFragmentShader(),
+            fragmentShader,
             uniforms: {
                 time: {type: "f", value: 0.},
                 rayOrigin: {type: "v3", value: new THREE.Vector3(0, 0, 0)},
                 rayDirection: {type: "v3", value: new THREE.Vector3(0, 0, 0)},
                 resolution: {type: "v2", value: new THREE.Vector2(window.innerWidth, window.innerHeight)},
+                positions: {type: "v3v", value: this.positions},
             },
             side: THREE.DoubleSide,
         });
@@ -62,15 +65,18 @@ AFRAME.registerComponent("r-scene", {
         const declarations = [];
         const distanceCalls = [];
         const materialCalls = [];
-        let i = 1;
+        let i = 0;
 
         const things = this.el.querySelectorAll("[r-thing]");
+        this.positions = [];
         for (const objEl of things) {
             const obj = objEl.components["r-thing"];
-            const prefix = `thing${i++}_`;
-
+            const pos = objEl.getAttribute("position");
+            const prefix = `thing${i}_`;
+            this.positions.push(pos);
             declarations.push(`
-                vec3 ${prefix}modify(in vec3 p) {
+                vec3 ${prefix}modify(in vec3 p, in vec3 position) {
+                    p -= position;
                     ${obj.data.modifiers}
                     return p;
                 }
@@ -88,15 +94,16 @@ AFRAME.registerComponent("r-scene", {
                 }
             `);
 
-            distanceCalls.push(`d = ${prefix}blend(d, ${prefix}distance(${prefix}modify(p)));`);
+            distanceCalls.push(`d = ${prefix}blend(d, ${prefix}distance(${prefix}modify(p, positions[${i}])));`);
             // Буэ
             materialCalls.push(
-                `tmpP = ${prefix}modify(p);`,
+                `tmpP = ${prefix}modify(p, positions[${i}]);`,
                 `tmpD = ${prefix}distance(tmpP);`,
                 `m = ${prefix}blend(d, tmpD, m, ${prefix}material(tmpP));`,
                 `d = ${prefix}blend(d, tmpD);`,
                 `if(d <= PLANK_LENGTH) return m;`,
             );
+            i++;
         }
 
         return `
@@ -113,6 +120,7 @@ AFRAME.registerComponent("r-scene", {
             uniform vec2 resolution;
             uniform vec3 rayOrigin;
             uniform vec3 rayDirection;
+            uniform vec3 positions[${this.positions.length}];
 
             varying mat3 camera;
             varying vec3 lightPos;
@@ -357,10 +365,4 @@ AFRAME.registerComponent("r-thing", {
             `,
         });
     },
-    init: function() {
-        const pos = this.el.getAttribute("position");
-        if (pos.length() > 0) {
-            this.addModifier(`p -= vec3(${pos.x}, ${pos.y}, ${pos.z});`);
-        }
-    }
 });

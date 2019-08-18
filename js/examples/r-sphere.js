@@ -9,4 +9,8 @@ AFRAME.registerComponent("r-sphere", {
             `,
         });
     },
+    tick: function(t, dt) {
+        const pos = this.el.getAttribute("position");
+        pos.x = Math.sin(t*.001);
+    },
 });
