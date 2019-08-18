@@ -29,11 +29,15 @@ AFRAME.registerComponent("r-scene", {
                 uniform vec3 rayOrigin;
                 uniform vec3 rayDirection;
                 varying mat3 camera;
+                varying vec3 lightPos;
+
                 void main() {
                     vec3 forward = normalize(rayDirection);
                     vec3 right = normalize(cross(vec3(0., 1., 0.), forward));
                     vec3 up = normalize(cross(forward, right));
                     camera = mat3(right, up, forward);
+                    float t = time * .0001;
+                    lightPos = vec3(sin(t), 2. + sin(t * .5), cos(t * 1.5));
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(vec3(position), 1.0);
                 }
             `,
@@ -66,31 +70,33 @@ AFRAME.registerComponent("r-scene", {
             const prefix = `thing${i++}_`;
 
             declarations.push(`
-                vec3 ${prefix}modify(vec3 p) {
+                vec3 ${prefix}modify(in vec3 p) {
                     ${obj.data.modifiers}
                     return p;
                 }
-                float ${prefix}distance(vec3 p) {
+                float ${prefix}distance(in vec3 p) {
                     ${obj.data.distance}
                 }
-                Material ${prefix}material(vec3 p) {
+                Material ${prefix}material(in vec3 p) {
                     ${obj.data.material}
                 }
-                float ${prefix}blend(float d1, float d2) {
+                float ${prefix}blend(in float d1, in float d2) {
                     ${obj.data.distanceBlend}
                 }
-                Material ${prefix}blend(float d1, float d2, Material m1, Material m2) {
+                Material ${prefix}blend(in float d1, in float d2, in Material m1, in Material m2) {
                     ${obj.data.materialBlend}
                 }
             `);
 
             distanceCalls.push(`d = ${prefix}blend(d, ${prefix}distance(${prefix}modify(p)));`);
             // Буэ
-            materialCalls.push(`tmpP = ${prefix}modify(p);`,
-                               `tmpD = ${prefix}distance(tmpP);`,
-                               `m = ${prefix}blend(d, tmpD, m, ${prefix}material(tmpP));`,
-                               `d = ${prefix}blend(d, tmpD);`,
-                               `if(d <= PLANK_LENGTH) return m;`);
+            materialCalls.push(
+                `tmpP = ${prefix}modify(p);`,
+                `tmpD = ${prefix}distance(tmpP);`,
+                `m = ${prefix}blend(d, tmpD, m, ${prefix}material(tmpP));`,
+                `d = ${prefix}blend(d, tmpD);`,
+                `if(d <= PLANK_LENGTH) return m;`,
+            );
         }
 
         return `
@@ -109,6 +115,7 @@ AFRAME.registerComponent("r-scene", {
             uniform vec3 rayDirection;
 
             varying mat3 camera;
+            varying vec3 lightPos;
 
             const vec3 gammaCorrection = vec3(1.0 / 2.2);
 
@@ -166,7 +173,7 @@ AFRAME.registerComponent("r-scene", {
             `)}
 
             // http://iquilezles.org/www/articles/distfunctions/distfunctions.htm
-            float getDistance(vec3 p) {
+            float getDistance(in vec3 p) {
                 float d = FOG_DIST;
                 // DistanceCalls
                 ${distanceCalls.join(`
@@ -174,7 +181,7 @@ AFRAME.registerComponent("r-scene", {
                 return d;
             }
 
-            Material getMaterial(vec3 p) {
+            Material getMaterial(in vec3 p) {
                 float d = FOG_DIST;
                 vec3 tmpP;
                 float tmpD;
@@ -185,42 +192,36 @@ AFRAME.registerComponent("r-scene", {
                 return m;
             }
 
-            HitObject rayMarch(vec3 rayOrigin, vec3 rayDirection) {
-                HitObject result;
-                result.distance = PLANK_LENGTH;
+            void rayMarch(inout HitObject obj, in vec3 rayOrigin, in vec3 rayDirection, float plankLength) {
                 float stepDistance;
+                obj.distance = plankLength;
                 for (int i = 0; i < MAX_STEPS; i++) {
-                    result.point = rayOrigin + rayDirection * result.distance;
-                    stepDistance = abs(getDistance(result.point));
-                    result.distance += stepDistance;
-                    if (stepDistance < PLANK_LENGTH) {
-                        result.point = rayOrigin + rayDirection * result.distance;
+                    stepDistance = abs(getDistance(rayOrigin + rayDirection * obj.distance));
+                    obj.distance += stepDistance;
+                    if (stepDistance < plankLength) {
                         break;
                     }
-                    if (result.distance >= FOG_DIST) {
+                    if (obj.distance >= FOG_DIST) {
                         break;
                     }
                 }
-                result.material = getMaterial(result.point);
-                return result;
+                obj.point = rayOrigin + rayDirection * obj.distance;
             }
 
-            vec3 getNormal(vec3 point) {
-                float distance = getDistance(point);
+            vec3 getNormal(in vec3 point) {
                 vec2 offset = vec2(.01, 0);
-                vec3 normal = distance - vec3(
+                return normalize(getDistance(point) - vec3(
                     getDistance(point - offset.xyy),
                     getDistance(point - offset.yxy),
                     getDistance(point - offset.yyx)
-                );
-                return normalize(normal);
+                ));
             }
 
             // https://www.youtube.com/watch?v=TnhM0xc_zFc
-            vec3 blend(vec3 color, vec3 blendColor, float blendAmount) {
+            vec3 blend(in vec3 color, in vec3 blendColor, in float blendAmount) {
                 return color * (1. - blendAmount) + blendColor * blendAmount;
             }
-            float softShadow(vec3 point, vec3 lightDir) {
+            float softShadow(in vec3 point, in vec3 lightDir) {
                 point += lightDir * .1;
                 float totalDist = .1;
                 float result = 1.;
@@ -237,42 +238,35 @@ AFRAME.registerComponent("r-scene", {
             }
 
             // https://www.shadertoy.com/view/wd2SWD
-            float calcAO(vec3 p, vec3 n) {
+            float calcAO(in vec3 p, in vec3 n) {
                 float k = 1.;
                 float occ = 0.;
                 float len;
-                int j = 0;
-                for ( int i = 0; i < 5; i ++ ) {
-                    len = .15 * (float(j++) + 1.);
+                for ( float i = 1.; i < 6.; i += 1. ) {
+                    len = .15 * i;
                     occ += (len - getDistance(n * len + p)) * k;
                     k *= .5;
                 }
                 return clamp(1. - occ, 0., 1.);
             }
 
-            vec3 phongLighting(vec3 point, Material mat, vec3 ray) {
-                float t = time * .0001;
-                vec3 lightPos = vec3(sin(t), 2. + sin(t * .5), cos(t * 1.5));
-
+            vec3 phongLighting(in vec3 point, in Material mat, in vec3 ray) {
                 vec3 normal = getNormal(point);
                 vec3 lightDir = normalize(lightPos - point);
                 float diffuse = max(0., mat.diffuse * dot(normal, lightDir));
-                vec3 reflectedRay = reflect(ray, normal);
-                float specular = max(0., mat.specular * dot(lightDir, reflectedRay));
-                specular = pow(specular, mat.shininess);
-                float shadow = softShadow(point, lightDir);
-                float ao = calcAO(point, normal);
-                shadow *= ao;
+                float specular = pow(max(0., mat.specular * dot(lightDir, reflect(ray, normal))), mat.shininess);
+                float shadow = softShadow(point, lightDir) * calcAO(point, normal);
                 return (mat.ambient + diffuse * shadow) * pow(mat.color, gammaCorrection) + specular * shadow * vec3(1.);
             }
 
-            vec3 reflections(vec3 point, vec3 ray, vec3 color, float reflectionAmount) {
+            vec3 reflections(in vec3 point, in vec3 ray, in vec3 color, in float reflectionAmount) {
                 HitObject obj;
                 for ( int i = 0; i < 5; i ++ ) {
                     if (reflectionAmount <= 0.01) return color;
                     ray = reflect(ray, getNormal(point));
                     point += .1 * ray;
-                    obj = rayMarch(point, ray);
+                    rayMarch(obj, point, ray, PLANK_LENGTH);
+                    obj.material = getMaterial(obj.point);
                     if (obj.distance > FOG_DIST) return blend(color, vec3(0), reflectionAmount);
                     point += ray * obj.distance;
                     color = blend(color, phongLighting(point, obj.material, ray), reflectionAmount);
@@ -281,31 +275,37 @@ AFRAME.registerComponent("r-scene", {
                 return color;
             }
 
-            vec3 refractions(vec3 point, vec3 ray, Material material) {
+            vec3 refractions(in vec3 point, in vec3 ray, in Material material) {
+                HitObject surface;
                 vec3 normal = getNormal(point);
                 ray = refract(ray, normal, 1. / material.ior);
-                HitObject backSurface = rayMarch(point - normal * PLANK_LENGTH * 2., ray);
+                rayMarch(surface, point - normal * .01, ray, .001);
 
-                normal = -getNormal(backSurface.point);
+                normal = -getNormal(surface.point);
                 ray = refract(ray, normal, 1. / material.ior);
-                HitObject nextSurface = rayMarch(backSurface.point - normal * PLANK_LENGTH * 2., ray);
-
-                return blend(phongLighting(nextSurface.point, nextSurface.material, ray), FOG_COLOR, nextSurface.distance / FOG_DIST);
+                rayMarch(surface, surface.point - normal * .01, ray, .001);
+                if (surface.distance >= FOG_DIST) {
+                    return FOG_COLOR;
+                }
+                surface.material = getMaterial(surface.point);
+                return blend(phongLighting(surface.point, surface.material, ray), FOG_COLOR, surface.distance / FOG_DIST);
             }
 
-            vec3 getColor(vec3 origin, vec3 direction) {
-                HitObject hitObject = rayMarch(origin, direction);
+            vec3 getColor(in vec3 origin, in vec3 direction) {
+                HitObject hitObject;
+                rayMarch(hitObject, origin, direction, PLANK_LENGTH);
                 if (hitObject.distance >= FOG_DIST) {
                     return FOG_COLOR;
                 }
-                vec3 color;
-                color = phongLighting(hitObject.point, hitObject.material, direction);
+                hitObject.material = getMaterial(hitObject.point);
+                vec3 color = phongLighting(hitObject.point, hitObject.material, direction);
                 if (hitObject.material.transparency > 0.) {
                     color = blend(color, refractions(hitObject.point, direction, hitObject.material), hitObject.material.transparency);
                 }
-                color = reflections(hitObject.point, direction, color, hitObject.material.reflection);
-                color = blend(color, FOG_COLOR, hitObject.distance / FOG_DIST);
-                return color;
+                if(hitObject.material.reflection > 0.) {
+                    color = reflections(hitObject.point, direction, color, hitObject.material.reflection);
+                }
+                return blend(color, FOG_COLOR, hitObject.distance / FOG_DIST);
             }
 
             void main() {
@@ -359,7 +359,7 @@ AFRAME.registerComponent("r-thing", {
     },
     init: function() {
         const pos = this.el.getAttribute("position");
-        if(pos.length() > 0) {
+        if (pos.length() > 0) {
             this.addModifier(`p -= vec3(${pos.x}, ${pos.y}, ${pos.z});`);
         }
     }

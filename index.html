@@ -33,9 +33,6 @@
 <a-scene stats>
     <a-entity id="player" q-controls camera></a-entity>
     <a-entity r-scene>
-        <!--<a-entity r-firmament="size: 15"
-                  r-material="color: .435, .486, .384;
-                              diffuse: .3;"></a-entity>-->
         <a-entity r-floor r-material-grid></a-entity>
         <a-entity r-sphere="radius: .5;"
                   r-material="color: .027 .318 .596;"
@@ -60,10 +57,9 @@
                               diffuse: .2;
                               specular: .1"
                   r-op-repeat="period: 14 0 14"></a-entity>
-        <a-entity r-box="size: .01, 1., 1.;"
-                  position="0, 1.2, 13.5"
-                  r-material="color: .8, 1, .8.;diffuse: .2; specular: .5; transparency: .8; ior: 1.4;"></a-entity>
-
+        <a-entity r-box="size: .3, .3, .3;"
+                  position="0, .8, 13.5"
+                  r-material="color: .8, 1, .8.; diffuse: .2; specular: .5; transparency: .8; ior: 1.4;"></a-entity>
         <a-entity r-ceiling r-op-smooth-union="k: 3."></a-entity>
     </a-entity>
 </a-scene>
