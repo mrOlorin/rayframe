@@ -3,7 +3,7 @@ AFRAME.registerComponent("r-scene", {
         size: {type: "vec3", default: new THREE.Vector3(1e4, 1e4, 1e4)},
         maxSteps: {default: 256},
         fogDistance: {default: 100.},
-        fogColor: {type: "vec3", default: new THREE.Vector3(.8, .8, .8)},
+        fogColor: {type: "vec3", default: new THREE.Vector3(.2, .2, .2)},
         plankLength: {default: .0001},
         screenDistance: {default: .6},
     },
@@ -11,7 +11,8 @@ AFRAME.registerComponent("r-scene", {
     rayDirection: new THREE.Vector3(0., 0., 0.),
     uglyFix: new THREE.Vector3(-1., 1., 1.),
     init: function() {
-        const fail = (![] + [])[+[]] + (![] + [])[+!+[]] + ([![]] + [][[]])[+!+[] + [+[]]] + (![] + [])[!+[] + !+[]];
+        this.initControls();
+        this.fail = (![] + [])[+[]] + (![] + [])[+!+[]] + ([![]] + [][[]])[+!+[] + [+[]]] + (![] + [])[!+[] + !+[]];
         const material = this.initMaterial();
         const geometry = new THREE.BoxBufferGeometry(this.data.size.x, this.data.size.y, this.data.size.z);
         this.mesh = new THREE.Mesh(geometry, material);
@@ -21,15 +22,21 @@ AFRAME.registerComponent("r-scene", {
             this.mesh.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
         });
     },
+    initControls: function() {
+        const player = document.querySelector("#player");
+        if (!player) {
+            return;
+        }
+        player.setAttribute("q-controls", {});
+        player.components["q-controls"].getDistance = this.getDistance.bind(this);
+    },
     initMaterial: function() {
-        const fragmentShader = this.buildFragmentShader();
+        this.build();
         return new THREE.ShaderMaterial({
             vertexShader: `
 				precision highp float;
 				uniform float time;
-                uniform vec3 rayOrigin;
                 uniform vec3 rayDirection;
-                uniform vec3 positions[${this.positions.length}];
                 varying mat3 camera;
                 varying vec3 lightPos;
 
@@ -43,7 +50,7 @@ AFRAME.registerComponent("r-scene", {
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(vec3(position), 1.0);
                 }
             `,
-            fragmentShader,
+            fragmentShader: this.fragmentShader,
             uniforms: {
                 time: {type: "f", value: 0.},
                 rayOrigin: {type: "v3", value: new THREE.Vector3(0, 0, 0)},
@@ -54,6 +61,13 @@ AFRAME.registerComponent("r-scene", {
             side: THREE.DoubleSide,
         });
     },
+    getDistance: function(p) {
+        let distance = this.data.fogDistance;
+        for (const getDistance of this.distances) {
+            distance = Math.min(distance, getDistance(p.clone()));
+        }
+        return distance;
+    },
     onBeforeRender: function(renderer, scene, camera) {
         camera.getWorldPosition(this.rayOrigin);
         camera.getWorldDirection(this.rayDirection);
@@ -61,7 +75,7 @@ AFRAME.registerComponent("r-scene", {
         this.mesh.material.uniforms.rayDirection.value.copy(this.rayDirection.multiply(this.uglyFix));
         this.mesh.material.uniforms.time.value = performance.now();
     },
-    buildFragmentShader: function() {
+    build: function() {
         const declarations = [];
         const distanceCalls = [];
         const materialCalls = [];
@@ -69,11 +83,14 @@ AFRAME.registerComponent("r-scene", {
 
         const things = this.el.querySelectorAll("[r-thing]");
         this.positions = [];
+        this.distances = [];
         for (const objEl of things) {
             const obj = objEl.components["r-thing"];
-            const pos = objEl.getAttribute("position");
+            if (objEl.getDistance) {
+                this.distances.push(objEl.getDistance);
+            }
             const prefix = `thing${i}_`;
-            this.positions.push(pos);
+            this.positions.push(objEl.getAttribute("position"));
             declarations.push(`
                 vec3 ${prefix}modify(in vec3 p, in vec3 position) {
                     p -= position;
@@ -105,8 +122,7 @@ AFRAME.registerComponent("r-scene", {
             );
             i++;
         }
-
-        return `
+        this.fragmentShader = `
             #define MAX_STEPS ${this.data.maxSteps}
             #define PLANK_LENGTH float(${this.data.plankLength})
             #define FOG_DIST float(${this.data.fogDistance})

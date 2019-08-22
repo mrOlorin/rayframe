@@ -5,5 +5,8 @@ AFRAME.registerComponent("r-floor", {
                 return p.y;
             `,
         });
+        this.el.getDistance = function(p) {
+            return p.y;
+        };
     },
 });

@@ -82,11 +82,6 @@ AFRAME.registerComponent('q-controls', {
             this.isWalking = false;
             return;
         }
-        if (this.el.object3D.position[this.jAxis] <= this.data.playerHeight) {
-            // Underground
-            this.velocity[this.jAxis] = 0;
-            this.el.object3D.position[this.jAxis] = this.data.playerHeight;
-        }
         if (this.pressedKeys.Space) {
             // Init jump
             this.velocity[this.jAxis] = this.data.jumpAcceleration;
@@ -113,7 +108,29 @@ AFRAME.registerComponent('q-controls', {
         this.velocity[this.jAxis] = 0;
         return false;
     },
+    normalOffset: {
+        xyy: new THREE.Vector3(.01, 0, 0),
+        yxy: new THREE.Vector3(0, .01, 0),
+        yyx: new THREE.Vector3(0, 0, .01),
+    },
+    normal: new THREE.Vector3(),
+    checkDistance: function() {
+        if (!this.getDistance) {
+            return;
+        }
+        const distance = this.getDistance(this.el.object3D.position.clone()) || -.01;
+        if (distance > .5) {
+            return;
+        }
+        this.normal.set(
+            distance - this.getDistance(this.el.object3D.position.clone().sub(this.normalOffset.xyy)),
+            distance - this.getDistance(this.el.object3D.position.clone().sub(this.normalOffset.yxy)),
+            distance - this.getDistance(this.el.object3D.position.clone().sub(this.normalOffset.yyx)),
+        ).normalize();
+        this.velocity.addScaledVector(this.normal, this.data.gravityConstant / (distance * distance));
+    },
     updateVelocity: function(delta) {
+        this.checkDistance();
         if (!(this.velocity.x || this.velocity.y || this.velocity.z || !isEmptyObject(this.pressedKeys)) && this.isWalking) {
             return;
         }

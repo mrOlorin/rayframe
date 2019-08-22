@@ -7,7 +7,7 @@ AFRAME.registerComponent("r-ceiling", {
                 return (11. - p.y + random)*.5;
             `,
             material: `
-                float f = .5 + .5 * sin(p.y + .5);
+                float f = .5 + .5 * sin(p.y);
                 Material m;
                 m.color = vec3(.5, .5, 1. - f * .4);
                 m.diffuse = .2;

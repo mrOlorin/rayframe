@@ -8,9 +8,9 @@ AFRAME.registerComponent("r-sphere", {
                 return length(p) - float(${this.data.radius});
             `,
         });
-    },
-    tick: function(t, dt) {
-        const pos = this.el.getAttribute("position");
-        pos.x = Math.sin(t*.001);
+        this.el.getDistance = function(p) {
+            p.sub(this.el.getAttribute("position"));
+            return Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z) - this.data.radius;
+        }.bind(this);
     },
 });
